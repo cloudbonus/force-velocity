@@ -14,7 +14,7 @@ import numpy.typing as npt
 import rerun as rr
 import rerun.blueprint as rrb
 
-from domain.pose_utils import PoseUtils
+from domain import utils
 from domain.video_source import VideoSource
 
 mass = 70.0
@@ -23,6 +23,7 @@ previous_position = None
 previous_velocity = 0
 previous_time = None
 previous_force = 0
+
 
 def track_pose(video_path: str, model_path: str, *, max_frame_count: int | None) -> None:
     options = mp.tasks.vision.PoseLandmarkerOptions(
@@ -33,7 +34,7 @@ def track_pose(video_path: str, model_path: str, *, max_frame_count: int | None)
         output_segmentation_masks=True,
     )
 
-    rr.log("description", rr.TextDocument(PoseUtils.DESCRIPTION, media_type=rr.MediaType.MARKDOWN), static=True)
+    rr.log("description", rr.TextDocument(utils.DESCRIPTION, media_type=rr.MediaType.MARKDOWN), static=True)
 
     rr.log("curves/parabola",
            rr.SeriesLine(name="Eccentric Contraction / Concentric Contraction"),
@@ -134,6 +135,7 @@ def read_landmark_positions_3d(
         landmarks = [pose_landmarks[lm] for lm in [23, 24, 29, 30]]
         return np.array([(lm.x, lm.y, lm.z) for lm in landmarks])
 
+
 def compute_force_velocity(landmark_positions_3d, current_time, mass):
     global previous_position, previous_velocity, previous_time, previous_force
 
@@ -170,12 +172,12 @@ def compute_force_velocity(landmark_positions_3d, current_time, mass):
 
     return force, current_velocity
 
+
 def main() -> None:
     logging.getLogger().addHandler(logging.StreamHandler())
     logging.getLogger().setLevel("INFO")
 
-    pose_utils = PoseUtils()
-    parser = pose_utils.get_parser()
+    parser = utils.get_parser()
 
     rr.script_add_args(parser)
 
@@ -198,11 +200,11 @@ def main() -> None:
 
     video_path = args.video_path
     if not video_path:
-        video_path = pose_utils.get_video_path(args.video)
+        video_path = utils.get_video_path(args.video)
 
     model_path = args.model_path
     if not args.model_path:
-        model_path = pose_utils.get_downloaded_model_path(args.model)
+        model_path = utils.get_downloaded_model_path(args.model)
 
     track_pose(video_path, model_path, max_frame_count=args.max_frame)
 
