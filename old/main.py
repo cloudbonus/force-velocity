@@ -14,8 +14,8 @@ import numpy.typing as npt
 import rerun as rr
 import rerun.blueprint as rrb
 
-from domain import utils
-from domain.video_source import VideoSource
+from old import utils
+from app.video_source import VideoSource
 
 mass = 70.0
 

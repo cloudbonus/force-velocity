@@ -1,6 +1,8 @@
 import sys
+
 from PyQt6 import QtWidgets
 from ui import InputWindow
+
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
@@ -11,3 +13,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

@@ -1,7 +1,9 @@
-import scipy.signal
-import numpy as np
 import mediapipe as mp
-from domain.video_source import VideoSource
+import numpy as np
+import scipy.signal
+import csv
+
+from video_source import VideoSource
 
 
 class ForceVelocityTracker:
@@ -89,3 +91,15 @@ class ForceVelocityTracker:
         self.previous_force = force
 
         return force, current_velocity
+
+    def save_to_csv(self, filename='force_velocity_data.csv'):
+        """
+        Save the forces and velocities to a CSV file.
+        """
+        with open(filename, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['Time (s)', 'Force (N)', 'Velocity (m/s)'])
+
+            # Assuming forces and velocities are already filled
+            for i, (force, velocity) in enumerate(zip(self.forces, self.velocities)):
+                writer.writerow([i, force, velocity])

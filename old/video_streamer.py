@@ -1,7 +1,7 @@
 import pickle
 import logging
 import sys
-from domain.video_source import VideoSource
+from app.video_source import VideoSource
 import utils
 from contextlib import closing
 

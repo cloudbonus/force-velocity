@@ -1,13 +1,16 @@
+import logging
 from dataclasses import dataclass
 from typing import Iterator
-import logging
+
 import cv2
+
 
 @dataclass
 class VideoFrame:
     data: cv2.typing.MatLike
     time: float
     idx: int
+
 
 class VideoSource:
     def __init__(self, path: str):

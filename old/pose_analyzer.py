@@ -6,7 +6,7 @@ import mediapipe as mp
 import numpy.typing as npt
 import utils
 from typing import Any
-from domain.video_source import VideoFrame
+from app.video_source import VideoFrame
 
 
 class VideoProcessor:
