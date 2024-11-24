@@ -50,9 +50,10 @@ class ForceVelocityTracker:
         return self._filter_data()
 
     def _filter_data(self):
-        if len(self.forces) > 3:
-            filtered_forces = scipy.signal.medfilt(self.forces, kernel_size=5)
-            filtered_velocities = scipy.signal.medfilt(self.velocities, kernel_size=5)
+        kernel_size = 3
+        if len(self.forces) >= 3:
+            filtered_forces = scipy.signal.medfilt(self.forces, kernel_size=kernel_size)
+            filtered_velocities = scipy.signal.medfilt(self.velocities, kernel_size=kernel_size)
         else:
             filtered_forces = self.forces
             filtered_velocities = self.velocities
@@ -64,11 +65,22 @@ class ForceVelocityTracker:
             return None
         else:
             pose_landmarks = results.pose_landmarks[0]
-            landmarks = [pose_landmarks[lm] for lm in [23, 24, 29, 30]]
+            landmarks = [pose_landmarks[lm] for lm in [23, 24, 31, 32]]
             return np.array([(lm.x, lm.y, lm.z) for lm in landmarks])
 
     def _compute_force_velocity(self, landmark_positions_3d, current_time):
         current_position = (landmark_positions_3d[0][1] + landmark_positions_3d[1][1]) / 2
+
+        ground = (landmark_positions_3d[2][1] + landmark_positions_3d[3][1]) / 2  # Носки человека
+
+        # Установить базовый уровень ground, если это первый кадр
+        if not hasattr(self, "initial_ground"):
+            self.initial_ground = ground
+
+        # Пропустить кадры, где изменение уровня ground > 10% от базового значения
+        ground_change_percentage = abs(ground - self.initial_ground) / self.initial_ground
+        if ground_change_percentage > 0.05:  # Пропуск, если изменение больше 10%
+            return self.previous_force, self.previous_velocity
 
         if self.previous_position is None:
             self.previous_position = current_position
@@ -93,13 +105,9 @@ class ForceVelocityTracker:
         return force, current_velocity
 
     def save_to_csv(self, filename='force_velocity_data.csv'):
-        """
-        Save the forces and velocities to a CSV file.
-        """
         with open(filename, mode='w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(['Time (s)', 'Force (N)', 'Velocity (m/s)'])
 
-            # Assuming forces and velocities are already filled
             for i, (force, velocity) in enumerate(zip(self.forces, self.velocities)):
                 writer.writerow([i, force, velocity])

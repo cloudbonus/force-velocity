@@ -147,6 +147,7 @@ def compute_force_velocity(landmark_positions_3d, current_time, mass):
         return estimated_force, estimated_velocity
 
     current_position = (landmark_positions_3d[0][1] + landmark_positions_3d[1][1]) / 2
+    ground = (landmark_positions_3d[2][1] + landmark_positions_3d[3][1]) / 2
 
     if previous_position is None:
         previous_position = current_position
@@ -170,7 +171,7 @@ def compute_force_velocity(landmark_positions_3d, current_time, mass):
     previous_time = current_time
     previous_force = force
 
-    return force, current_velocity
+    return ground, current_velocity
 
 
 def main() -> None:
