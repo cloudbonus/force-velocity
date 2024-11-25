@@ -1,19 +1,21 @@
-from PyQt6 import QtWidgets, QtGui, QtCore
+import cv2
+from PyQt6 import QtWidgets, QtCore
+from PyQt6.QtGui import QImage, QPixmap, QIcon
 from app.utils.mlp_canvas import MplCanvas
 from app.tracking.tracker import ForceVelocityTracker
 from app.tracking.tracking_worker import TrackingWorker
-from app.utils.video_player import VideoPlayer
+from app.utils.video_source import VideoSource
 
 
 class PlotWindow(QtWidgets.QMainWindow):
-    update_video_signal = QtCore.pyqtSignal(QtGui.QPixmap)
+    update_video_signal = QtCore.pyqtSignal(QPixmap)
     return_to_main_signal = QtCore.pyqtSignal()
 
     def __init__(self, mass, video_path, model_path):
         super().__init__()
         self.setWindowTitle("Force-Velocity Profiling")
         self.setFixedSize(800, 600)
-        self.setWindowIcon(QtGui.QIcon('resources/logo.png'))
+        self.setWindowIcon(QIcon('resources/logo.png'))
 
         self.main_layout = QtWidgets.QVBoxLayout()
 
@@ -56,10 +58,10 @@ class PlotWindow(QtWidgets.QMainWindow):
         self.velocities = []
 
         # Video handling
-        self.video_player = VideoPlayer(video_path)
-        self.video_player.frame_ready.connect(self.update_video_label)
-        self.video_player.video_finished.connect(self.on_video_finished)
-        self.video_player.start()
+        self.video_source = VideoSource(video_path)
+        self.video_timer = QtCore.QTimer(self)
+        self.video_timer.timeout.connect(self.update_video_frame)
+        self.video_timer.start(30)  # Ожидаем около 30 FPS
 
     def on_new_data(self, forces, velocities):
         self.forces = forces
@@ -72,29 +74,38 @@ class PlotWindow(QtWidgets.QMainWindow):
     def update_status(self, status):
         self.status_label.setText(f"Статус: {status}")
 
-    def update_video_label(self, pixmap):
-        # Масштабируем видео, чтобы оно помещалось в QLabel, сохраняя пропорции
-        scaled_pixmap = pixmap.scaled(
-            self.video_label.width(),
-            self.video_label.height(),
-            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-            QtCore.Qt.TransformationMode.SmoothTransformation
-        )
-        self.video_label.setPixmap(scaled_pixmap)
+    def update_video_frame(self):
+        try:
+            frame = next(self.video_source.stream_bgr())
+            # Преобразование кадра в формат QPixmap
+            rgb_frame = cv2.cvtColor(frame.data, cv2.COLOR_BGR2RGB)
+            height, width, channel = rgb_frame.shape
+            bytes_per_line = channel * width
+            q_image = QImage(rgb_frame.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(q_image)
 
-    def on_video_finished(self):
-        # Видео завершилось, но продолжим обработку
-        self.status_label.setText("Видео завершено, продолжаем обработку...")
-        self.worker.set_video_finished()
+            # Масштабируем видео, чтобы оно помещалось в QLabel, сохраняя пропорции
+            scaled_pixmap = pixmap.scaled(
+                self.video_label.width(),
+                self.video_label.height(),
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation
+            )
+            self.video_label.setPixmap(scaled_pixmap)
+        except StopIteration:
+            # Если кадры закончились, прекращаем таймер
+            self.video_timer.stop()
+            self.status_label.setText("Видео завершено, продолжаем обработку...")
+            self.worker.set_video_finished()
 
     def return_to_main(self):
-        self.video_player.stop()
+        self.video_source.close()
         self.tracker.save_to_csv()
         self.worker.stop()
         self.close()
         self.return_to_main_signal.emit()
 
     def closeEvent(self, event):
-        self.video_player.stop()
+        self.video_source.close()
         self.worker.stop()
         super().closeEvent(event)

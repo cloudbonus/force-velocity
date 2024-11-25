@@ -27,7 +27,7 @@ class MainWindow(QtWidgets.QWidget):
 def main():
     app = QtWidgets.QApplication(sys.argv)
     main_window = MainWindow()
-    main_window.show_input_window()  # Start by showing the input window
+    main_window.show_input_window()
     sys.exit(app.exec())
 
 

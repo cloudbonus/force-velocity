@@ -2,7 +2,7 @@ import csv
 
 import mediapipe as mp
 import numpy as np
-import scipy.signal
+from scipy.signal import medfilt
 
 from app.utils.video_source import VideoSource
 
@@ -53,8 +53,8 @@ class ForceVelocityTracker:
     def _filter_data(self):
         kernel_size = 3
         if len(self.forces) >= 3:
-            filtered_forces = scipy.signal.medfilt(self.forces, kernel_size=kernel_size)
-            filtered_velocities = scipy.signal.medfilt(self.velocities, kernel_size=kernel_size)
+            filtered_forces = medfilt(self.forces, kernel_size=kernel_size)
+            filtered_velocities = medfilt(self.velocities, kernel_size=kernel_size)
         else:
             filtered_forces = self.forces
             filtered_velocities = self.velocities
