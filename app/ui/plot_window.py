@@ -7,7 +7,6 @@ from app.utils.video_player import VideoPlayer
 
 class PlotWindow(QtWidgets.QMainWindow):
     update_video_signal = QtCore.pyqtSignal(QtGui.QPixmap)
-
     return_to_main_signal = QtCore.pyqtSignal()
 
     def __init__(self, mass, video_path, model_path):
@@ -84,7 +83,9 @@ class PlotWindow(QtWidgets.QMainWindow):
         self.video_label.setPixmap(scaled_pixmap)
 
     def on_video_finished(self):
-        self.status_label.setText("Видео завершено")
+        # Видео завершилось, но продолжим обработку
+        self.status_label.setText("Видео завершено, продолжаем обработку...")
+        self.worker.set_video_finished()
 
     def return_to_main(self):
         self.video_player.stop()
