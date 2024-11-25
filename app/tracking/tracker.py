@@ -1,9 +1,10 @@
+import csv
+
 import mediapipe as mp
 import numpy as np
 import scipy.signal
-import csv
 
-from video_source import VideoSource
+from app.utils.video_source import VideoSource
 
 
 class ForceVelocityTracker:
