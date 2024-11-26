@@ -30,7 +30,7 @@ class PlotWindow(QtWidgets.QMainWindow):
         self.main_layout.addWidget(self.video_label)
 
         # Status label
-        self.status_label = QtWidgets.QLabel("Статус: Ожидание...")
+        self.status_label = QtWidgets.QLabel("Статус: Загрузка и обработка данных...")
         self.main_layout.addWidget(self.status_label)
 
         # Back button
@@ -48,11 +48,7 @@ class PlotWindow(QtWidgets.QMainWindow):
         self.worker = TrackingWorker(self.tracker)
         self.worker.data_ready.connect(self.on_new_data)
         self.worker.status_update.connect(self.update_status)
-        self.worker.start()
-
-        self.plot_timer = QtCore.QTimer(self)
-        self.plot_timer.timeout.connect(self.update_plot_periodically)
-        self.plot_timer.start(1000)
+        self.worker.finished.connect(self.on_processing_finished)
 
         self.forces = []
         self.velocities = []
@@ -60,12 +56,58 @@ class PlotWindow(QtWidgets.QMainWindow):
         # Video handling
         self.video_source = VideoSource(video_path)
         self.video_timer = QtCore.QTimer(self)
-        self.video_timer.timeout.connect(self.update_video_frame)
-        self.video_timer.start(30)  # Ожидаем около 30 FPS
+        self.video_timer.timeout.connect(self.update_video_and_plot)
+
+        # Start preprocessing
+        self.worker.start()
 
     def on_new_data(self, forces, velocities):
         self.forces = forces
         self.velocities = velocities
+
+    def on_processing_finished(self):
+        self.status_label.setText("Обработка завершена. Начало синхронного воспроизведения.")
+        self.video_timer.start(30)  # Ожидаем около 30 FPS
+
+    def update_video_and_plot(self):
+        try:
+            # Обновление видео
+            frame = next(self.video_source.stream_bgr())
+            rgb_frame = cv2.cvtColor(frame.data, cv2.COLOR_BGR2RGB)
+            height, width, channel = rgb_frame.shape
+            bytes_per_line = channel * width
+            q_image = QImage(rgb_frame.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(q_image)
+            scaled_pixmap = pixmap.scaled(
+                self.video_label.width(),
+                self.video_label.height(),
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation
+            )
+            self.video_label.setPixmap(scaled_pixmap)
+
+            # Обновление графика
+            current_frame_idx = frame.idx
+            if current_frame_idx % 5 == 0 and current_frame_idx < len(self.forces):
+                current_forces = self.forces[:current_frame_idx]
+                current_velocities = self.velocities[:current_frame_idx]
+                self.canvas.update_plot(current_forces, current_velocities)
+        except StopIteration:
+            # Завершение воспроизведения
+            self.video_timer.stop()
+            self.status_label.setText("Воспроизведение завершено.")
+
+    def return_to_main(self):
+        self.video_source.close()
+        self.tracker.save_to_csv()
+        self.worker.stop()
+        self.close()
+        self.return_to_main_signal.emit()
+
+    def closeEvent(self, event):
+        self.video_source.close()
+        self.worker.stop()
+        super().closeEvent(event)
 
     def update_plot_periodically(self):
         if self.forces and self.velocities:
@@ -98,14 +140,3 @@ class PlotWindow(QtWidgets.QMainWindow):
             self.status_label.setText("Видео завершено, продолжаем обработку...")
             self.worker.set_video_finished()
 
-    def return_to_main(self):
-        self.video_source.close()
-        self.tracker.save_to_csv()
-        self.worker.stop()
-        self.close()
-        self.return_to_main_signal.emit()
-
-    def closeEvent(self, event):
-        self.video_source.close()
-        self.worker.stop()
-        super().closeEvent(event)

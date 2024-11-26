@@ -1,9 +1,11 @@
+import concurrent.futures
+
+import concurrent.futures
 import csv
 
 import mediapipe as mp
 import numpy as np
 from scipy.signal import medfilt
-
 from app.utils.video_source import VideoSource
 
 
@@ -29,6 +31,8 @@ class ForceVelocityTracker:
         self.pose_landmarker = mp.tasks.vision.PoseLandmarker.create_from_options(options)
         self.video_source = VideoSource(self.video_path)
 
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+
     def update(self):
         try:
             frame = next(self.video_source.stream_bgr())
@@ -43,7 +47,11 @@ class ForceVelocityTracker:
             return None
 
         current_time = frame.time
-        force, velocity = self._compute_force_velocity(landmark_positions_3d, current_time)
+        future = self.executor.submit(
+            self._compute_force_velocity, landmark_positions_3d, current_time
+        )
+
+        force, velocity = future.result()
 
         self.forces.append(force)
         self.velocities.append(velocity)
@@ -112,3 +120,6 @@ class ForceVelocityTracker:
 
             for i, (force, velocity) in enumerate(zip(self.forces, self.velocities)):
                 writer.writerow([i, force, velocity])
+
+    def close(self):
+        self.executor.shutdown(wait=True)
