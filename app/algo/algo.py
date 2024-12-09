@@ -2,12 +2,13 @@ from contextlib import closing
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Dict
-import pickle
+
+import matplotlib.pyplot as plt
 import mediapipe as mp
 import numpy as np
+from scipy.ndimage import gaussian_filter1d
 
 from app.utils.video_source import VideoSource
-import matplotlib.pyplot as plt
 
 
 class JumpState(Enum):
@@ -27,12 +28,74 @@ class JumpData:
 def read_landmark_positions_3d(results):
     if results.pose_landmarks is None or len(results.pose_landmarks) == 0:
         return None
-    else:
-        pose_landmarks = results.pose_landmarks[0]
-        landmarks = [pose_landmarks[lm] for lm in [23, 24, 31, 32]]
-        return np.array([(lm.x, lm.y, lm.z) for lm in landmarks])
+    pose_landmarks = np.array([(lm.x, lm.y, lm.z) for lm in results.pose_landmarks[0]])
+    indices = np.array([23, 24, 31, 32])
+    return pose_landmarks[indices]
 
-def create_plot(jumpdata_segments: List[Dict[int, List[JumpData]]]):
+
+def plot_smoothed(data: List[Dict[JumpState, List[JumpData]]], smooth_sigma=2):
+    plt.figure(figsize=(12, 8))
+
+    takeoff_data = {}
+    landing_data = {}
+
+    for segment in data:
+        for jump in segment.get(JumpState.TAKEOFF, []):
+            takeoff_data.setdefault(jump.velocity, []).append(jump.force)
+        for jump in segment.get(JumpState.LANDING, []):
+            landing_data.setdefault(jump.velocity, []).append(jump.force)
+
+    def aggregate_data(jump_data):
+        x, y = [], []
+        for velocity, forces in sorted(jump_data.items()):
+            x.append(velocity)
+            y.append(np.mean(forces))  # Можно заменить на np.median(forces)
+        return np.array(x), np.array(y)
+
+    takeoff_x, takeoff_y = aggregate_data(takeoff_data)
+    landing_x, landing_y = aggregate_data(landing_data)
+
+    takeoff_y_smooth = gaussian_filter1d(takeoff_y, sigma=smooth_sigma)
+    landing_y_smooth = gaussian_filter1d(landing_y, sigma=smooth_sigma)
+
+    if len(takeoff_x) > 1:
+        plt.plot(takeoff_x, takeoff_y_smooth, label="Takeoff", color="green")
+        plt.fill_between(
+            takeoff_x, takeoff_y_smooth, color="green", alpha=0.2, label="Eccentric Phase"
+        )
+    if len(landing_x) > 1:
+        plt.plot(landing_x, landing_y_smooth, label="Landing", color="red")
+        plt.fill_between(
+            landing_x, landing_y_smooth, color="red", alpha=0.2, label="Concentric Phase"
+        )
+
+    plt.xlabel("Velocity (m/s)")
+    plt.ylabel("Force (N)")
+    plt.title("Smoothed Force-Velocity Profile")
+    plt.axvline(color='black', linewidth=2, linestyle='--', label="Transition Point (Zero Velocity)")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_segments(jumpdata_segments: List[Dict[JumpState, List[JumpData]]]):
+    def on_legend_click(event):
+        artist = event.artist
+        for legline, segment_name in zip(legend.get_lines(), segment_lines.keys()):
+            if legline == artist:
+                visible = not segment_lines[segment_name][0].get_visible()
+                for line in segment_lines[segment_name]:
+                    line.set_visible(visible)
+                legline.set_alpha(1.0 if visible else 0.2)
+                plt.draw()
+
+    def add_segment_data(segment, color, label):
+        velocities = [data.velocity for data in segment]
+        forces = [data.force for data in segment]
+        line, = plt.plot(velocities, forces, color=color, label=label)
+        return line
+
     plt.figure(figsize=(12, 8))
 
     state_colors = {
@@ -40,59 +103,32 @@ def create_plot(jumpdata_segments: List[Dict[int, List[JumpData]]]):
         JumpState.LANDING: "red"
     }
 
-    segment_lines = {}  # Словарь для привязки линий сегмента к легенде
+    segment_lines = {}
+    legend_labels = []
 
     for segment_index, segment in enumerate(jumpdata_segments):
-        takeoff_x = []
-        takeoff_y = []
-        landing_x = []
-        landing_y = []
-
-        # Заполняем данные для TAKEOFF
-        for data in segment.get(JumpState.TAKEOFF, []):
-            takeoff_x.append(data.velocity)
-            takeoff_y.append(data.force)
-
-        # Заполняем данные для LANDING
-        for data in segment.get(JumpState.LANDING, []):
-            landing_x.append(data.velocity)
-            landing_y.append(data.force)
-
-        # Рисуем линии для текущего сегмента
-        takeoff_line, = plt.plot(
-            takeoff_x, takeoff_y, color=state_colors[JumpState.TAKEOFF]
+        takeoff_line = add_segment_data(
+            segment.get(JumpState.TAKEOFF, []),
+            state_colors[JumpState.TAKEOFF],
+            f"Takeoff {segment_index + 1}"
         )
-        landing_line, = plt.plot(
-            landing_x, landing_y, color=state_colors[JumpState.LANDING]
+        landing_line = add_segment_data(
+            segment.get(JumpState.LANDING, []),
+            state_colors[JumpState.LANDING],
+            f"Landing {segment_index + 1}"
         )
 
-        # Добавляем метку в легенду только один раз на сегмент
         segment_label = f"Segment {segment_index + 1}"
-        plt.plot([], [], color="black", label=segment_label)  # Пустая линия для метки
-
-        # Связываем сегмент с его линиями
         segment_lines[segment_label] = [takeoff_line, landing_line]
+        legend_labels.append(segment_label)
 
     plt.xlabel("Velocity (m/s)")
     plt.ylabel("Force (N)")
     plt.title("Force-Velocity Profile for Jump Segments")
-    legend = plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.grid(True)
 
-    # Обработчик кликов по легенде
-    def on_legend_click(event):
-        for legline, segment_name in zip(legend.get_lines(), segment_lines.keys()):
-            if legline == event.artist:
-                # Переключаем видимость всех линий сегмента
-                for line in segment_lines[segment_name]:
-                    visible = not line.get_visible()
-                    line.set_visible(visible)
-                # Меняем прозрачность элемента легенды
-                legline.set_alpha(1.0 if visible else 0.2)
-                plt.draw()
+    legend = plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
-    # Привязка событий кликов к элементам легенды
-    legend.set_picker(True)
     for legline in legend.get_lines():
         legline.set_picker(5)
 
@@ -101,7 +137,7 @@ def create_plot(jumpdata_segments: List[Dict[int, List[JumpData]]]):
     plt.show()
 
 
-class ForceVelocityTracker:
+class JumpForceVelocityTracker:
     def __init__(self, mass, video_path, model_path):
         self.mass = mass
         self.video_path = video_path
@@ -123,7 +159,7 @@ class ForceVelocityTracker:
         self.pose_landmarker = mp.tasks.vision.PoseLandmarker.create_from_options(options)
         self.video_source = VideoSource(self.video_path)
 
-    def update(self) -> List[Dict[JumpState, List[JumpData]]]:
+    def compute_force_velocity(self) -> List[Dict[JumpState, List[JumpData]]]:
         segments = []
         current_segment = {JumpState.TAKEOFF: [], JumpState.LANDING: []}
 
@@ -142,7 +178,7 @@ class ForceVelocityTracker:
                     continue
 
                 current_time = bgr_frame.time
-                force, velocity, state = self._compute_force_velocity(landmark_positions_3d, current_time)
+                force, velocity, state = self._compute(landmark_positions_3d, current_time)
 
                 if state not in (JumpState.TAKEOFF, JumpState.LANDING, JumpState.TRANSITION):
                     continue
@@ -169,10 +205,9 @@ class ForceVelocityTracker:
 
         return segments
 
-    def _compute_force_velocity(self, landmark_positions_3d, current_time):
-        current_position = (landmark_positions_3d[0][1] + landmark_positions_3d[1][1]) / 2
-
-        ground = (landmark_positions_3d[2][1] + landmark_positions_3d[3][1]) / 2
+    def _compute(self, landmark_positions_3d, current_time):
+        current_position = np.mean(landmark_positions_3d[:2, 1])
+        ground = np.mean(landmark_positions_3d[2:, 1])
 
         if self.initial_ground is None:
             self.initial_ground = ground
@@ -192,17 +227,17 @@ class ForceVelocityTracker:
         if delta_t <= 0:
             return self.previous_force, self.previous_velocity, self.previous_state
 
-
-        current_velocity = delta_y / delta_t
+        current_velocity = -delta_y / delta_t
 
         acceleration = (current_velocity - self.previous_velocity) / delta_t
 
-        if abs(current_velocity) > 1e-5:  # Избегаем деления на ноль
-            force = self.mass * abs(acceleration) / abs(current_velocity)
-        else:
-            force = self.mass * abs(acceleration)
+        force = (
+            self.mass * np.abs(acceleration) / np.abs(current_velocity)
+            if np.abs(current_velocity) > 1e-5
+            else self.mass * np.abs(acceleration)
+        )
 
-        error_margin = 0.001 * abs(self.previous_position)
+        error_margin = 0.001 * np.abs(self.previous_position)
         if current_position >= self.previous_position + error_margin:
             state = JumpState.LANDING
         elif current_position <= self.previous_position - error_margin:
@@ -218,19 +253,22 @@ class ForceVelocityTracker:
 
         return force, current_velocity, state
 
+
 if __name__ == "__main__":
-    tracker = ForceVelocityTracker(
+    tracker = JumpForceVelocityTracker(
         mass=70,
         video_path="../../dataset/pose_movement/jump.mp4",
         model_path="../../model/pose_movement/heavy.task",
     )
-    # data = tracker.update()
+    data = tracker.compute_force_velocity()
     #
     # with open('jump_data.pkl', 'wb') as file:
     #     pickle.dump(data, file)
-
-    with open('jump_data.pkl', 'rb') as file:
-        data = pickle.load(file)
-        create_plot(data)
-
-   #create_plot(data)
+    #
+    # with open('jump_data.pkl', 'rb') as file:
+    #     data = pickle.load(file)
+    #     plot_smoothed(data)
+    # create_plot(data)
+    plot_segments(data)
+    plot_smoothed(data)
+# create_plot(data)
