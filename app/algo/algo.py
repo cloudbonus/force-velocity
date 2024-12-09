@@ -1,11 +1,10 @@
 from contextlib import closing
 from dataclasses import dataclass
 from enum import Enum
-from typing import List
+from typing import List, Dict
 
 import mediapipe as mp
 import numpy as np
-import pickle
 
 from app.utils.video_source import VideoSource
 import matplotlib.pyplot as plt
@@ -33,8 +32,7 @@ def read_landmark_positions_3d(results):
         landmarks = [pose_landmarks[lm] for lm in [23, 24, 31, 32]]
         return np.array([(lm.x, lm.y, lm.z) for lm in landmarks])
 
-
-def plot_results_interactive(jumpdata_groups: List[List[JumpData]]):
+def create_plot(jumpdata_segments: List[Dict[JumpState, List[JumpData]]]):
     plt.figure(figsize=(12, 8))
 
     state_colors = {
@@ -43,50 +41,47 @@ def plot_results_interactive(jumpdata_groups: List[List[JumpData]]):
     }
 
     group_lines = {}
-    for group_index, jumpdata in enumerate(jumpdata_groups):
+    for segment_index, segment in enumerate(jumpdata_segments):
         takeoff_x = []
         takeoff_y = []
         landing_x = []
         landing_y = []
 
-        for data in jumpdata:
-            if data.jump_state == JumpState.TAKEOFF:
-                takeoff_x.append(data.velocity)
-                takeoff_y.append(data.force)
-            elif data.jump_state == JumpState.LANDING:
-                landing_x.append(data.velocity)
-                landing_y.append(data.force)
+        for data in segment.get(JumpState.TAKEOFF, []):
+            takeoff_x.append(data.velocity)
+            takeoff_y.append(data.force)
+
+        for data in segment.get(JumpState.LANDING, []):
+            landing_x.append(data.velocity)
+            landing_y.append(data.force)
 
         takeoff_line, = plt.plot(
             takeoff_x, takeoff_y, color=state_colors[JumpState.TAKEOFF],
-            label=f"Group {group_index + 1} Takeoff"
+            label=f"Segment {segment_index + 1} Takeoff"
         )
         landing_line, = plt.plot(
             landing_x, landing_y, color=state_colors[JumpState.LANDING],
-            label=f"Group {group_index + 1} Landing"
+            label=f"Segment {segment_index + 1} Landing"
         )
 
-        print(jumpdata)
-        group_lines[f"Group {group_index + 1}"] = [takeoff_line, landing_line]
+        group_lines[f"Segment {segment_index + 1}"] = [takeoff_line, landing_line]
 
     plt.xlabel("Velocity (m/s)")
     plt.ylabel("Force (N)")
-    plt.title("Force-Velocity Profile for Jump Groups")
-    legend = plt.legend(
-        [f"Group {i + 1}" for i in range(len(jumpdata_groups))],
-        loc='center left', bbox_to_anchor=(1, 0.5)
-    )
+    plt.title("Force-Velocity Profile for Jump Segments")
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.grid(True)
 
     def on_legend_click(event):
-        for legline, group_name in zip(legend.get_lines(), group_lines.keys()):
+        for legline, segment_name in zip(plt.gca().get_legend().get_lines(), group_lines.keys()):
             if legline == event.artist:
-                for line in group_lines[group_name]:
+                for line in group_lines[segment_name]:
                     visible = not line.get_visible()
                     line.set_visible(visible)
                 legline.set_alpha(1.0 if visible else 0.2)
                 plt.draw()
 
+    legend = plt.gca().get_legend()
     legend.set_picker(True)
     for legline in legend.get_lines():
         legline.set_picker(5)
@@ -94,7 +89,6 @@ def plot_results_interactive(jumpdata_groups: List[List[JumpData]]):
     plt.gcf().canvas.mpl_connect('pick_event', on_legend_click)
     plt.tight_layout()
     plt.show()
-
 
 class ForceVelocityTracker:
     def __init__(self, mass, video_path, model_path):
@@ -118,9 +112,10 @@ class ForceVelocityTracker:
         self.pose_landmarker = mp.tasks.vision.PoseLandmarker.create_from_options(options)
         self.video_source = VideoSource(self.video_path)
 
-    def update(self) -> List[List[JumpData]]:
+    def update(self) -> List[Dict[JumpState, List[JumpData]]]:
         segments = []
-        segment = []
+        current_segment = {JumpState.TAKEOFF: [], JumpState.LANDING: []}
+
         skip_next = False
 
         with closing(VideoSource(self.video_path)) as video_source:
@@ -138,13 +133,13 @@ class ForceVelocityTracker:
                 current_time = bgr_frame.time
                 force, velocity, state = self._compute_force_velocity(landmark_positions_3d, current_time)
 
-                if state == JumpState.UNKNOWN:
+                if state not in (JumpState.TAKEOFF, JumpState.LANDING, JumpState.TRANSITION):
                     continue
 
                 if state == JumpState.TRANSITION:
-                    if segment:
-                        segments.append(segment)
-                        segment = []
+                    if current_segment[JumpState.TAKEOFF] or current_segment[JumpState.LANDING]:
+                        segments.append(current_segment)
+                    current_segment = {JumpState.TAKEOFF: [], JumpState.LANDING: []}  # Новый сегмент
                     skip_next = True
                     continue
 
@@ -153,58 +148,49 @@ class ForceVelocityTracker:
                     continue
 
                 data_entry = JumpData(force=force, velocity=velocity, jump_state=state)
-                segment.append(data_entry)
+                if state == JumpState.TAKEOFF:
+                    current_segment[JumpState.TAKEOFF].append(data_entry)
+                elif state == JumpState.LANDING:
+                    current_segment[JumpState.LANDING].append(data_entry)
 
-        if segment:
-            print(segment)
-            segments.append(segment)
+        if current_segment[JumpState.TAKEOFF] or current_segment[JumpState.LANDING]:
+            segments.append(current_segment)
 
         return segments
 
     def _compute_force_velocity(self, landmark_positions_3d, current_time):
-        # Текущее положение по оси Y (среднее значение для двух ключевых точек)
         current_position = (landmark_positions_3d[0][1] + landmark_positions_3d[1][1]) / 2
 
-        # Уровень земли (среднее значение для двух точек, касающихся пола)
         ground = (landmark_positions_3d[2][1] + landmark_positions_3d[3][1]) / 2
 
-        # Устанавливаем начальный уровень земли, если ещё не установлен
         if self.initial_ground is None:
             self.initial_ground = ground
 
-        # Проверяем изменение уровня земли
         ground_change_percentage = abs(ground - self.initial_ground) / self.initial_ground
         if ground_change_percentage > 0.05:
             return self.previous_force, self.previous_velocity, JumpState.TRANSITION
 
-        # Если данные предыдущего состояния отсутствуют
         if self.previous_position is None:
             self.previous_position = current_position
             self.previous_time = current_time
             return 0, 0, JumpState.UNKNOWN
 
-        # Вычисление разницы по времени и положению
         delta_y = current_position - self.previous_position
         delta_t = current_time - self.previous_time
 
-        # Если времени не прошло, возвращаем прошлые значения
         if delta_t <= 0:
             return self.previous_force, self.previous_velocity, self.previous_state
 
 
-        # Текущая скорость
         current_velocity = delta_y / delta_t
 
-        # Ускорение (изменение скорости за единицу времени)
         acceleration = (current_velocity - self.previous_velocity) / delta_t
 
-        # Расчёт силы (обратно пропорционально скорости, если скорость не равна нулю)
         if abs(current_velocity) > 1e-5:  # Избегаем деления на ноль
             force = self.mass * abs(acceleration) / abs(current_velocity)
         else:
             force = self.mass * abs(acceleration)
 
-        # Определение состояния прыжка
         error_margin = 0.001 * abs(self.previous_position)
         if current_position >= self.previous_position + error_margin:
             state = JumpState.LANDING
@@ -213,7 +199,6 @@ class ForceVelocityTracker:
         else:
             state = JumpState.UNKNOWN
 
-        # Сохраняем текущее состояние как предыдущее для следующего вызова
         self.previous_position = current_position
         self.previous_velocity = current_velocity
         self.previous_time = current_time
@@ -225,14 +210,15 @@ class ForceVelocityTracker:
 if __name__ == "__main__":
     tracker = ForceVelocityTracker(
         mass=70,
-        video_path="../dataset/pose_movement/jump.mp4",
-        model_path="../model/pose_movement/heavy.task",
+        video_path="../../dataset/pose_movement/jump.mp4",
+        model_path="../../model/pose_movement/heavy.task",
     )
     data = tracker.update()
+    print(data)
 
     # with open('jump_data.pkl', 'wb') as file:
     #     pickle.dump(data, file)
     # with open('jump_data.pkl', 'rb') as file:
     #     data = pickle.load(file)
 
-    plot_results_interactive(data)
+    create_plot(data)
