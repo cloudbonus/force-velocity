@@ -62,7 +62,6 @@ class PlotWindow(QtWidgets.QMainWindow):
         self.worker.start()
 
     def on_new_data(self, data: JumpData):
-        print(data)
         if data.jump_state == JumpState.TRANSITION:
             if self.current_segment[JumpState.TAKEOFF] or self.current_segment[JumpState.LANDING]:
                 self.segments.append(self.current_segment)

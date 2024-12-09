@@ -47,6 +47,7 @@ class JumpForceVelocityTracker:
             base_options=mp.tasks.BaseOptions(model_asset_path=self.model_path),
             running_mode=mp.tasks.vision.RunningMode.VIDEO,
             output_segmentation_masks=True,
+
         )
 
         self.pose_landmarker = mp.tasks.vision.PoseLandmarker.create_from_options(options)
@@ -68,7 +69,6 @@ class JumpForceVelocityTracker:
         current_time = frame.time
         force, velocity, state = self._compute(landmark_positions_3d, current_time)
         data_entry = JumpData(force=force, velocity=velocity, jump_state=state, timestamp=current_time)
-        print(data_entry)
         return data_entry
 
     def _compute(self, landmark_positions_3d, current_time):
