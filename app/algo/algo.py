@@ -2,7 +2,7 @@ from contextlib import closing
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Dict
-
+import pickle
 import mediapipe as mp
 import numpy as np
 
@@ -32,7 +32,7 @@ def read_landmark_positions_3d(results):
         landmarks = [pose_landmarks[lm] for lm in [23, 24, 31, 32]]
         return np.array([(lm.x, lm.y, lm.z) for lm in landmarks])
 
-def create_plot(jumpdata_segments: List[Dict[JumpState, List[JumpData]]]):
+def create_plot(jumpdata_segments: List[Dict[int, List[JumpData]]]):
     plt.figure(figsize=(12, 8))
 
     state_colors = {
@@ -40,48 +40,58 @@ def create_plot(jumpdata_segments: List[Dict[JumpState, List[JumpData]]]):
         JumpState.LANDING: "red"
     }
 
-    group_lines = {}
+    segment_lines = {}  # Словарь для привязки линий сегмента к легенде
+
     for segment_index, segment in enumerate(jumpdata_segments):
         takeoff_x = []
         takeoff_y = []
         landing_x = []
         landing_y = []
 
+        # Заполняем данные для TAKEOFF
         for data in segment.get(JumpState.TAKEOFF, []):
             takeoff_x.append(data.velocity)
             takeoff_y.append(data.force)
 
+        # Заполняем данные для LANDING
         for data in segment.get(JumpState.LANDING, []):
             landing_x.append(data.velocity)
             landing_y.append(data.force)
 
+        # Рисуем линии для текущего сегмента
         takeoff_line, = plt.plot(
-            takeoff_x, takeoff_y, color=state_colors[JumpState.TAKEOFF],
-            label=f"Segment {segment_index + 1} Takeoff"
+            takeoff_x, takeoff_y, color=state_colors[JumpState.TAKEOFF]
         )
         landing_line, = plt.plot(
-            landing_x, landing_y, color=state_colors[JumpState.LANDING],
-            label=f"Segment {segment_index + 1} Landing"
+            landing_x, landing_y, color=state_colors[JumpState.LANDING]
         )
 
-        group_lines[f"Segment {segment_index + 1}"] = [takeoff_line, landing_line]
+        # Добавляем метку в легенду только один раз на сегмент
+        segment_label = f"Segment {segment_index + 1}"
+        plt.plot([], [], color="black", label=segment_label)  # Пустая линия для метки
+
+        # Связываем сегмент с его линиями
+        segment_lines[segment_label] = [takeoff_line, landing_line]
 
     plt.xlabel("Velocity (m/s)")
     plt.ylabel("Force (N)")
     plt.title("Force-Velocity Profile for Jump Segments")
-    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    legend = plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.grid(True)
 
+    # Обработчик кликов по легенде
     def on_legend_click(event):
-        for legline, segment_name in zip(plt.gca().get_legend().get_lines(), group_lines.keys()):
+        for legline, segment_name in zip(legend.get_lines(), segment_lines.keys()):
             if legline == event.artist:
-                for line in group_lines[segment_name]:
+                # Переключаем видимость всех линий сегмента
+                for line in segment_lines[segment_name]:
                     visible = not line.get_visible()
                     line.set_visible(visible)
+                # Меняем прозрачность элемента легенды
                 legline.set_alpha(1.0 if visible else 0.2)
                 plt.draw()
 
-    legend = plt.gca().get_legend()
+    # Привязка событий кликов к элементам легенды
     legend.set_picker(True)
     for legline in legend.get_lines():
         legline.set_picker(5)
@@ -89,6 +99,7 @@ def create_plot(jumpdata_segments: List[Dict[JumpState, List[JumpData]]]):
     plt.gcf().canvas.mpl_connect('pick_event', on_legend_click)
     plt.tight_layout()
     plt.show()
+
 
 class ForceVelocityTracker:
     def __init__(self, mass, video_path, model_path):
@@ -213,12 +224,13 @@ if __name__ == "__main__":
         video_path="../../dataset/pose_movement/jump.mp4",
         model_path="../../model/pose_movement/heavy.task",
     )
-    data = tracker.update()
-    print(data)
-
+    # data = tracker.update()
+    #
     # with open('jump_data.pkl', 'wb') as file:
     #     pickle.dump(data, file)
-    # with open('jump_data.pkl', 'rb') as file:
-    #     data = pickle.load(file)
 
-    create_plot(data)
+    with open('jump_data.pkl', 'rb') as file:
+        data = pickle.load(file)
+        create_plot(data)
+
+   #create_plot(data)
