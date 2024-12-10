@@ -97,7 +97,7 @@ class InputWindow(QtWidgets.QWidget):
             else:
                 video_source = self.video_file_path
 
-            model_path = "../model/pose_movement/heavy.task"
+            model_path = "../model/heavy.task"
             self.start_analysis_signal.emit(mass, video_source, model_path)
 
         except ValueError as e:

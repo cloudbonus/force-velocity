@@ -255,8 +255,8 @@ class JumpForceVelocityTracker:
 if __name__ == "__main__":
     tracker = JumpForceVelocityTracker(
         mass=70,
-        video_path="../../dataset/pose_movement/jump.mp4",
-        model_path="../../model/pose_movement/heavy.task",
+        video_path="../../dataset/jump.mp4",
+        model_path="../../model/heavy.task",
     )
     #data = tracker.compute_force_velocity()
     #
