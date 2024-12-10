@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 
+import cv2
 import mediapipe as mp
 import numpy as np
 
@@ -20,11 +21,18 @@ class JumpData:
     jump_state: JumpState
     timestamp: float
 
+def camera_read_landmark_positions_3d(results):
+    if not results or not results.pose_landmarks:
+        return None
+    indices = [23, 24, 31, 32]
+    pose_landmarks = np.array(
+        [(lm.x, lm.y, lm.z) for i, lm in enumerate(results.pose_landmarks.landmark) if i in indices]
+    )
+    return pose_landmarks
 
 def read_landmark_positions_3d(results):
     if results.pose_landmarks is None or len(results.pose_landmarks) == 0:
         return None
-    print(results.pose_landmarks)
     pose_landmarks = np.array([(lm.x, lm.y, lm.z) for lm in results.pose_landmarks[0]])
     indices = np.array([23, 24, 31, 32])
     return pose_landmarks[indices]
@@ -45,15 +53,22 @@ class JumpForceVelocityTracker:
         self.previous_state = JumpState.UNKNOWN
         self.array = []
 
-        options = mp.tasks.vision.PoseLandmarkerOptions(
-            base_options=mp.tasks.BaseOptions(model_asset_path=self.model_path),
-            running_mode=mp.tasks.vision.RunningMode.VIDEO,
-            output_segmentation_masks=True,
+        if video_path is None and model_path is None:
+            self.pose_landmarker = mp.solutions.pose.Pose(
+                static_image_mode=False,
+                min_detection_confidence=0.7,
+                min_tracking_confidence=0.7
+            )
+        else:
+            options = mp.tasks.vision.PoseLandmarkerOptions(
+                base_options=mp.tasks.BaseOptions(model_asset_path=self.model_path),
+                running_mode=mp.tasks.vision.RunningMode.VIDEO,
+                output_segmentation_masks=True,
 
-        )
+            )
 
-        self.pose_landmarker = mp.tasks.vision.PoseLandmarker.create_from_options(options)
-        self.video_source = VideoSource(self.video_path)
+            self.pose_landmarker = mp.tasks.vision.PoseLandmarker.create_from_options(options)
+            self.video_source = VideoSource(self.video_path)
 
     def update(self):
         try:
@@ -116,3 +131,20 @@ class JumpForceVelocityTracker:
         self.previous_state = state
 
         return force, current_velocity, state
+
+
+
+class CameraJumpForceVelocityTracker(JumpForceVelocityTracker):
+    def __init__(self, mass):
+        super().__init__(mass, None, None)
+
+    def update_for_camera(self, frame, timestamp):
+        mp_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = self.pose_landmarker.process(mp_image)
+        landmark_positions_3d = camera_read_landmark_positions_3d(results)
+
+        if landmark_positions_3d is None:
+            return None
+
+        force, velocity, state = self._compute(landmark_positions_3d, timestamp)
+        return JumpData(force=force, velocity=velocity, jump_state=state, timestamp=timestamp)

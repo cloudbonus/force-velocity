@@ -1,3 +1,4 @@
+import pickle
 from contextlib import closing
 from dataclasses import dataclass
 from enum import Enum
@@ -257,14 +258,12 @@ if __name__ == "__main__":
         video_path="../../dataset/pose_movement/jump.mp4",
         model_path="../../model/pose_movement/heavy.task",
     )
-    data = tracker.compute_force_velocity()
+    #data = tracker.compute_force_velocity()
     #
     # with open('jump_data.pkl', 'wb') as file:
     #     pickle.dump(data, file)
     #
-    # with open('../ui/jump_data.pkl', 'rb') as file:
-    #     data = pickle.load(file)
-    #     plot_smoothed(data)
-    plot_segments(data)
-    plot_smoothed(data)
+    with open('../jump_data.pkl', 'rb') as file:
+        data = pickle.load(file)
+        plot_smoothed(data)
 # create_plot(data)
