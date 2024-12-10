@@ -14,7 +14,10 @@ class VideoFrame:
 
 class VideoSource:
     def __init__(self, path: str):
-        self.capture = cv2.VideoCapture(path)
+        if path == "0":
+            self.capture = cv2.VideoCapture(0)
+        else:
+            self.capture = cv2.VideoCapture(path)
 
         if not self.capture.isOpened():
             logging.error("Couldn't open video at %s", path)

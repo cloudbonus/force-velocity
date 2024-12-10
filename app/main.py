@@ -2,8 +2,9 @@ import sys
 
 from PyQt6 import QtWidgets
 
+from ui.camera_plot_window import CameraPlotWindow
 from ui.input_window import InputWindow
-from ui.plot_window import PlotWindow
+from ui.record_plot_window import PlotWindow
 
 
 class MainWindow(QtWidgets.QWidget):
@@ -18,7 +19,10 @@ class MainWindow(QtWidgets.QWidget):
         self.input_window.show()
 
     def show_plot_window(self, mass, video_path, model_path):
-        self.plot_window = PlotWindow(mass, video_path, model_path)
+        if video_path == "camera is on":  # Если используется камера
+            self.plot_window = CameraPlotWindow(mass, model_path)
+        else:
+            self.plot_window = PlotWindow(mass, video_path, model_path)
         self.plot_window.return_to_main_signal.connect(self.show_input_window)
         self.plot_window.show()
         self.input_window.close()
