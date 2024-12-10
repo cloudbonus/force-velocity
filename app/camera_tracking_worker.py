@@ -1,7 +1,7 @@
 from PyQt6.QtCore import QThread, pyqtSignal
 from time import time, sleep
 
-from app.tracking.jump_tracker import JumpData
+from jump_tracker import JumpData
 
 
 class CameraTrackingWorker(QThread):

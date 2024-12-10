@@ -6,9 +6,10 @@ from typing import List, Dict
 import matplotlib.pyplot as plt
 import mediapipe as mp
 import numpy as np
+from matplotlib.widgets import CheckButtons
 from scipy.ndimage import gaussian_filter1d
 
-from app.utils.video_source import VideoSource
+from app.video_source import VideoSource
 
 
 class JumpState(Enum):
@@ -49,7 +50,7 @@ def plot_smoothed(data: List[Dict[JumpState, List[JumpData]]], smooth_sigma=2):
         x, y = [], []
         for velocity, forces in sorted(jump_data.items()):
             x.append(velocity)
-            y.append(np.mean(forces))  # Можно заменить на np.median(forces)
+            y.append(np.mean(forces))
         return np.array(x), np.array(y)
 
     takeoff_x, takeoff_y = aggregate_data(takeoff_data)
@@ -79,61 +80,57 @@ def plot_smoothed(data: List[Dict[JumpState, List[JumpData]]], smooth_sigma=2):
     plt.show()
 
 
-def plot_segments(jumpdata_segments: List[Dict[JumpState, List[JumpData]]]):
-    def on_legend_click(event):
-        artist = event.artist
-        for legline, segment_name in zip(legend.get_lines(), segment_lines.keys()):
-            if legline == artist:
-                visible = not segment_lines[segment_name][0].get_visible()
-                for line in segment_lines[segment_name]:
-                    line.set_visible(visible)
-                legline.set_alpha(1.0 if visible else 0.2)
-                plt.draw()
-
-    def add_segment_data(segment, color, label):
-        velocities = [data.velocity for data in segment]
-        forces = [data.force for data in segment]
-        line, = plt.plot(velocities, forces, color=color, label=label)
-        return line
-
-    plt.figure(figsize=(12, 8))
+def plot_segments(jumpdata_segments: List[Dict[str, List[JumpData]]]):
+    fig, ax = plt.subplots(figsize=(12, 8))
 
     state_colors = {
         JumpState.TAKEOFF: "green",
         JumpState.LANDING: "red"
     }
 
-    segment_lines = {}
-    legend_labels = []
+    segment_lines = []
+    labels = []
 
     for segment_index, segment in enumerate(jumpdata_segments):
-        takeoff_line = add_segment_data(
-            segment.get(JumpState.TAKEOFF, []),
-            state_colors[JumpState.TAKEOFF],
-            f"Takeoff {segment_index + 1}"
+        takeoff_x = []
+        takeoff_y = []
+        landing_x = []
+        landing_y = []
+
+        for data in segment.get(JumpState.TAKEOFF, []):
+            takeoff_x.append(data.velocity)
+            takeoff_y.append(data.force)
+
+        for data in segment.get(JumpState.LANDING, []):
+            landing_x.append(data.velocity)
+            landing_y.append(data.force)
+
+        takeoff_line, = ax.plot(
+            takeoff_x, takeoff_y, color=state_colors[JumpState.TAKEOFF]
         )
-        landing_line = add_segment_data(
-            segment.get(JumpState.LANDING, []),
-            state_colors[JumpState.LANDING],
-            f"Landing {segment_index + 1}"
+        landing_line, = ax.plot(
+            landing_x, landing_y, color=state_colors[JumpState.LANDING]
         )
 
-        segment_label = f"Segment {segment_index + 1}"
-        segment_lines[segment_label] = [takeoff_line, landing_line]
-        legend_labels.append(segment_label)
+        segment_lines.append((takeoff_line, landing_line))
 
-    plt.xlabel("Velocity (m/s)")
-    plt.ylabel("Force (N)")
-    plt.title("Force-Velocity Profile for Jump Segments")
-    plt.grid(True)
+        labels.append(f"Segment {segment_index + 1}")
 
-    legend = plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.set_xlabel("Velocity (m/s)")
+    ax.set_ylabel("Force (N)")
+    ax.set_title("Force-Velocity Profile for Jump Segments")
+    ax.grid(True)
 
-    for legline in legend.get_lines():
-        legline.set_picker(5)
+    def toggle_lines(label):
+        index = labels.index(label)
+        for line in segment_lines[index]:
+            line.set_visible(not line.get_visible())
+        fig.canvas.draw()
 
-    plt.gcf().canvas.mpl_connect('pick_event', on_legend_click)
-    plt.tight_layout()
+    check = CheckButtons(ax=plt.axes([0.85, 0.4, 0.1, 0.2]), labels=labels, actives=[True] * len(labels))
+    check.on_clicked(toggle_lines)
+
+    plt.tight_layout(rect=[0, 0, 0.8, 1])
     plt.show()
 
 
@@ -265,10 +262,9 @@ if __name__ == "__main__":
     # with open('jump_data.pkl', 'wb') as file:
     #     pickle.dump(data, file)
     #
-    # with open('jump_data.pkl', 'rb') as file:
+    # with open('../ui/jump_data.pkl', 'rb') as file:
     #     data = pickle.load(file)
     #     plot_smoothed(data)
-    # create_plot(data)
     plot_segments(data)
     plot_smoothed(data)
 # create_plot(data)

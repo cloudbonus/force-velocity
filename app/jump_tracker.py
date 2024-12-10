@@ -1,14 +1,10 @@
 from dataclasses import dataclass
 from enum import Enum
 
-import cv2
 import mediapipe as mp
 import numpy as np
-from mediapipe.tasks.python.vision import PoseLandmarkerResult
 
-from app.utils.video_source import VideoSource
-
-GROUND_THRESHOLD = 0.05
+from video_source import VideoSource
 
 class JumpState(Enum):
     TAKEOFF = 1
@@ -26,31 +22,21 @@ class JumpData:
 
 
 def read_landmark_positions_3d(results):
-    # if results.pose_landmarks is None or len(results.pose_landmarks) == 0:
-    #     return None
-    # print(results.pose_landmarks)
-    # pose_landmarks = np.array([(lm.x, lm.y, lm.z) for lm in results.pose_landmarks[0]])
-    # indices = np.array([23, 24, 31, 32])
-    # return pose_landmarks[indices]
-    if not results:
+    if results.pose_landmarks is None or len(results.pose_landmarks) == 0:
         return None
-    indices = [23, 24, 31, 32]
-    pose_landmarks = np.array(
-        [(lm.x, lm.y, lm.z) for i, lm in enumerate(results.pose_landmarks.landmark) if i in indices])
-
-    return pose_landmarks
-    # print(results.pose_landmarks)
-    # pose_landmarks = np.array([(lm.x, lm.y, lm.z) for lm in results.pose_landmarks[0]])
-    # indices = np.array([23, 24, 31, 32])
-    # return pose_landmarks[indices]
+    print(results.pose_landmarks)
+    pose_landmarks = np.array([(lm.x, lm.y, lm.z) for lm in results.pose_landmarks[0]])
+    indices = np.array([23, 24, 31, 32])
+    return pose_landmarks[indices]
 
 
 class JumpForceVelocityTracker:
     def __init__(self, mass, video_path, model_path):
+
         self.mass = mass
         self.video_path = video_path
-        self.model_path = model_path
 
+        self.model_path = model_path
         self.previous_position = None
         self.initial_ground = None
         self.previous_time = None
@@ -59,32 +45,21 @@ class JumpForceVelocityTracker:
         self.previous_state = JumpState.UNKNOWN
         self.array = []
 
-        self.pose = mp.solutions.pose.Pose(static_image_mode=False, min_detection_confidence=0.7,
-                          min_tracking_confidence=0.7)
-        # options = mp.tasks.vision.PoseLandmarkerOptions(
-        #     base_options=mp.tasks.BaseOptions(model_asset_path=self.model_path),
-        #     running_mode=mp.tasks.vision.RunningMode.VIDEO,
-        #     output_segmentation_masks=True,
-        #
-        # )
+        options = mp.tasks.vision.PoseLandmarkerOptions(
+            base_options=mp.tasks.BaseOptions(model_asset_path=self.model_path),
+            running_mode=mp.tasks.vision.RunningMode.VIDEO,
+            output_segmentation_masks=True,
 
-        #self.pose_landmarker = mp.tasks.vision.PoseLandmarker.create_from_options(options)
+        )
+
+        self.pose_landmarker = mp.tasks.vision.PoseLandmarker.create_from_options(options)
         self.video_source = VideoSource(self.video_path)
 
     def update(self):
-        # try:
-        #     frame = next(self.video_source.stream_bgr())
-        #     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame.data)
-        #     results = self.pose_landmarker.detect_for_video(mp_image, int(frame.time * 1000))
-        #     landmark_positions_3d = read_landmark_positions_3d(results)
-        # except StopIteration:
-        #     return None
         try:
             frame = next(self.video_source.stream_bgr())
-            cv2.imshow('output', frame)
-            mp_image = cv2.cvtColor(frame.data, cv2.COLOR_BGR2RGB)
-            #mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame.data)
-            results = self.pose.process(mp_image)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame.data)
+            results = self.pose_landmarker.detect_for_video(mp_image, int(frame.time * 1000))
             landmark_positions_3d = read_landmark_positions_3d(results)
         except StopIteration:
             return None
@@ -102,7 +77,7 @@ class JumpForceVelocityTracker:
             self.initial_ground = ground
 
         ground_change_percentage = abs(ground - self.initial_ground) / self.initial_ground
-        if ground_change_percentage > GROUND_THRESHOLD:
+        if ground_change_percentage > 0.05:
             return self.previous_force, self.previous_velocity, JumpState.TRANSITION
 
         if self.previous_position is None:

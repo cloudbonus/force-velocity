@@ -5,7 +5,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from scipy.ndimage import gaussian_filter1d
 
-from app.tracking.jump_tracker import JumpState, JumpData
+from jump_tracker import JumpState, JumpData
 
 
 class MplCanvas(FigureCanvas):

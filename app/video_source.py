@@ -18,7 +18,6 @@ class VideoSource:
             self.capture = cv2.VideoCapture(0)
         else:
             self.capture = cv2.VideoCapture(path)
-
         if not self.capture.isOpened():
             logging.error("Couldn't open video at %s", path)
 

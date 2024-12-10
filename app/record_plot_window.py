@@ -2,10 +2,10 @@ import cv2
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtGui import QImage, QPixmap, QIcon
 
-from app.tracking.jump_tracker import JumpForceVelocityTracker, JumpData, JumpState
-from app.tracking.tracking_worker import TrackingWorker
-from app.utils.mlp_canvas import MplCanvas
-from app.utils.video_source import VideoSource
+from jump_tracker import JumpForceVelocityTracker, JumpData, JumpState
+from tracking_worker import TrackingWorker
+from mlp_canvas import MplCanvas
+from video_source import VideoSource
 
 
 class PlotWindow(QtWidgets.QMainWindow):

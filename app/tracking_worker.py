@@ -1,6 +1,6 @@
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from app.tracking.jump_tracker import JumpData
+from jump_tracker import JumpData
 
 
 class TrackingWorker(QThread):

@@ -93,7 +93,7 @@ class InputWindow(QtWidgets.QWidget):
                 raise ValueError("Масса должна быть положительным числом.")
 
             if not self.file_radio.isChecked() and self.camera_radio.isChecked():
-                video_source = "camera is on"
+                video_source = "0"
             else:
                 video_source = self.video_file_path
 
